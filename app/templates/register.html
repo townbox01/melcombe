@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Welcome to Guard Portal</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f6f8;
+        padding: 0;
+        margin: 0;
+      }
+      .email-container {
+        max-width: 600px;
+        margin: 20px auto;
+        background-color: #ffffff;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      }
+      .logo {
+        text-align: center;
+        margin-bottom: 30px;
+      }
+      .logo img {
+        max-width: 120px;
+      }
+      h2 {
+        color: #333333;
+      }
+      p {
+        font-size: 16px;
+        color: #555555;
+        line-height: 1.6;
+      }
+      .footer {
+        text-align: center;
+        font-size: 13px;
+        color: #888888;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #eeeeee;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-container">
+      <div class="logo">
+        <img src="https://yourcompany.com/logo.png" alt="Company Logo" />
+      </div>
+
+      <h2>Welcome on Board</h2>
+      <p>Your account has been created.</p>
+      <p><strong>Staff ID:</strong> {{ staff_id }}</p>
+      <p><strong>Temporary Password:</strong> {{ temp_password }}</p>
+      <p>Please login and change your password.</p>
+
+      <div class="footer">
+        &copy; {{ current_year }} Ecogis Technologies Ltd. All rights
+        reserved.<br />
+        www.ecogis.tech | support@ecogis.tech
+      </div>
+    </div>
+  </body>
+</html>
