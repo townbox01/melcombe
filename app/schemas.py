@@ -1,14 +1,16 @@
 from pydantic import BaseModel, constr, condecimal, EmailStr
 from typing import Optional
 from datetime import datetime
-from datetime import date
-
-
+from datetime import date, time
+from typing import List
 
 class ShiftAssign(BaseModel):
     guard_id: int
     post_name: str
     postcode: constr(min_length=5, max_length=10)
+
+
+
 
 class ShiftOut(BaseModel):
     id: int
@@ -23,9 +25,10 @@ class ShiftOut(BaseModel):
         orm_mode = True
 
 class ClockInData(BaseModel):
-    shift_id: int
-    latitude: condecimal(ge=-90, le=90)
-    longitude: condecimal(ge=-180, le=180)
+    assign_id: int
+    user_id: int
+    guard_lat: condecimal(ge=-90, le=90)
+    guard_lon: condecimal(ge=-180, le=180)
 
 
 
@@ -33,6 +36,14 @@ class ClockInData(BaseModel):
 
 class UserCreate(BaseModel):
     email: EmailStr
+
+
+
+class ShiftResponseUpdate(BaseModel):
+    assignment_id: int
+    response: str  # accept or reject
+
+
 
 
 
@@ -70,3 +81,37 @@ class LoginInput(BaseModel):
 
 class RefreshInput(BaseModel):
     refresh_token: str
+
+
+
+
+
+
+
+class ShiftCreate(BaseModel):
+    place_name: Optional[str]
+    postcode: Optional[str]
+    latitude: Optional[str]
+    longitude: Optional[str]
+    date: date
+    start_time: time
+    end_time: time
+
+
+
+
+
+class ShiftAssignRequest(BaseModel):
+    shift_id: int
+    staff_ids: List[int]
+    #assigned_by: int
+
+
+
+
+
+class UpdateShift(BaseModel):
+    shift_id: int
+    date: date
+    start_time: time
+    end_time: time

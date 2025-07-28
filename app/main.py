@@ -4,6 +4,9 @@ from typing import List, Optional
 from fastapi.responses import HTMLResponse
 from jose import JWTError, jwt
 import shutil
+from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
+from starlette.responses import Response
+from config import settings
 import os
 from config import UPLOAD_DIR  # ← import your config
 from crud import generate_random_password
@@ -13,6 +16,7 @@ from jinja2 import Environment, FileSystemLoader
 from database import get_db, engine
 from datetime import datetime
 import models
+from utils import haversine
 import schemas
 import crud
 from datetime import date
@@ -30,6 +34,18 @@ from auth import create_access_token, get_current_user,create_refresh_token, REF
 app = FastAPI(title="Security Company Shift & Clock-in API")
 
 setup_admin(app)
+
+REQUEST_COUNT = Counter('request_count', 'Total HTTP requests')
+
+@app.middleware("http")
+async def prometheus_middleware(request, call_next):
+    REQUEST_COUNT.inc()
+    response = await call_next(request)
+    return response
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 
@@ -51,16 +67,121 @@ async def assign_shift(data: schemas.ShiftAssign, db: Session = Depends(get_db))
     shift = crud.assign_shift(db, data.guard_id, data.post_name, data.postcode, lat, lon)
     return shift
 
-@app.post("/shifts/clock-in/", response_model=schemas.ShiftOut)
-async def clock_in(data: schemas.ClockInData, db: Session = Depends(get_db)):
-    shift = crud.get_shift(db, data.shift_id)
-    if not shift:
-        raise HTTPException(status_code=404, detail="Shift not found")
+
+
+
+
+@app.post("/shifts/clock-out")
+async def clock_out(
+    data: schemas.ClockInData,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    attendance = db.query(models.Attendance).filter(
+        models.Attendance.assign_id == data.assign_id,
+        models.Attendance.user_id == current_user.id,
+        models.Attendance.clock_in_time.isnot(None),
+        models.Attendance.clock_out_time.is_(None),
+        models.Attendance.status == "ongoing"
+    ).first()
+
+    if not attendance:
+        raise HTTPException(
+            status_code=400,
+            detail="No active attendance record found for clock-out."
+        )
+
+    shift_assignment = db.query(models.ShiftAssignment).filter(
+        models.ShiftAssignment.id == data.assign_id,
+        models.ShiftAssignment.user_id == current_user.id
+    ).first()
+
+    if not shift_assignment:
+        raise HTTPException(status_code=404, detail="Shift assignment not found.")
+
     try:
-        updated_shift = crud.clock_in(db, shift, float(data.latitude), float(data.longitude))
-        return updated_shift
+        shift_lat = shift_assignment.shift.latitude
+        shift_lon = shift_assignment.shift.longitude
+        max_distance = settings.CLOCKIN_RADIUS_METERS
+
+        dist = haversine(
+            float(data.guard_lat),
+            float(data.guard_lon),
+            float(shift_lat),
+            float(shift_lon)
+        )
+
+        if dist > max_distance:
+            raise ValueError(f"Too far from assigned location: {dist:.1f} meters")
+
+        attendance.clock_out_time = datetime.utcnow()
+        attendance.clock_out_lat = data.guard_lat
+        attendance.clock_out_lon = data.guard_lon
+        attendance.status = "completed"
+
+        db.commit()
+        db.refresh(attendance)
+
+        return {"message": "Clock-out successful"}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Clock-out failed.")
+
+
+
+
+
+
+#clock in her
+
+@app.post("/shifts/clock-in")
+async def clock_in(data: schemas.ClockInData, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    shift_assigned = db.query(models.ShiftAssignment).filter(models.ShiftAssignment.id == data.assign_id, models.ShiftAssignment.user_id == current_user.id).first()
+    
+
+    existing_attendance = db.query(models.Attendance).filter(
+        models.Attendance.assign_id == data.assign_id,
+        models.Attendance.user_id == current_user.id
+    ).first()
+
+    
+    if not shift_assigned:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    
+    if existing_attendance:
+        raise HTTPException(
+            status_code=400,
+            detail="You have already clocked in for this shift and not clocked out.")
+    try:
+        shift_lat, shift_lon = shift_assigned.shift.latitude, shift_assigned.shift.longitude
+        max_distance=settings.CLOCKIN_RADIUS_METERS
+        dist = haversine(float(data.guard_lat), float(data.guard_lon), float(shift_lat), float(shift_lon))
+
+        if dist > max_distance:
+            raise ValueError(f"Too far from assigned location: {dist:.1f} meters")
+        
+        clock_in = models.Attendance(
+            clock_in_time = datetime.utcnow(),
+            user_id = current_user.id,
+            assign_id = data.assign_id,
+            clock_in_lon  = data.guard_lon,
+            clock_in_lat = data.guard_lat,
+            status = 'ongoing'
+
+        )
+
+        db.add(clock_in)
+        db.commit()
+        db.refresh(clock_in)
+
+        return {"Message": "Guard Clock in Successful"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+
 
 
 
@@ -190,30 +311,6 @@ def save_uploaded_file(upload_file: UploadFile, folder: str = UPLOAD_DIR) -> str
 
 
 
-# @app.post("/signin")
-# async def signin(user_credentials: schemas.UserLogin, db: AsyncSession = Depends(get_db)):
-#     result = await db.execute(select(models.User).where(models.User.username == user_credentials.username))
-#     user = result.scalars().first()
-
-#     if not user or not await verify_password(user_credentials.password, user.password):
-#         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-#     account = await db.execute(select(models.Account).where(models.Account.user_id == user.id))
-#     details = account.scalars().first()
-
-#     if not details:
-#         raise HTTPException(status_code=404, detail="Account not found")
-    
-#     token = await create_access_token({"sub": user.username, "user_id": user.id})
-#     return {
-#         "access_token": token,
-#         "token_type": "bearer",
-#         "account_number": details.account_number,
-#         "user_id": details.user_id,
-#         "balance": details.balance
-#     }
-
-
 
 
 @app.post("/login")
@@ -244,3 +341,161 @@ def refresh_token(payload: schemas.RefreshInput):
         return {"access_token": access_token, "token_type": "bearer"}
     except JWTError:
         raise HTTPException(status_code=403, detail="Invalid or expired refresh token")
+    
+
+
+
+
+@app.post("/assign_shift")
+def assign_shift(data: schemas.ShiftAssignRequest, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    # 1. Check if shift exists
+    shift = db.query(models.Shift).filter(models.Shift.id == data.shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    # 2. Ensure the shift date is in the future
+    today = date.today()
+    if shift.date < today:
+        raise HTTPException(status_code=400, detail="Cannot assign staff to a past shift")
+
+    # 3. Validate staff IDs
+    users = db.query(models.User).filter(models.User.id.in_(data.staff_ids)).all()
+    found_ids = {user.id for user in users}
+    missing_ids = set(data.staff_ids) - found_ids
+    if missing_ids:
+        raise HTTPException(status_code=400, detail=f"Invalid user IDs: {list(missing_ids)}")
+
+    # 4. Check already assigned staff to prevent duplication
+    existing = db.query(models.ShiftAssignment).filter(
+        models.ShiftAssignment.shift_id == data.shift_id,
+        models.ShiftAssignment.user_id.in_(data.staff_ids)
+    ).all()
+
+    already_assigned_ids = {a.user_id for a in existing}
+    new_user_ids = set(data.staff_ids) - already_assigned_ids
+
+    if not new_user_ids:
+        return {"msg": "All users are already assigned to this shift"}
+
+    # 5. Create new assignments
+    new_assignments = [
+        models.ShiftAssignment(
+            shift_id=data.shift_id,
+            user_id=user_id,
+            assigned_by=current_user.id,
+            assigned_at=datetime.utcnow()
+        )
+        for user_id in new_user_ids
+    ]
+
+    db.add_all(new_assignments)
+    db.commit()
+
+    return {
+        "msg": f"{len(new_assignments)} user(s) assigned successfully",
+        "assigned_user_ids": list(new_user_ids)
+    }
+
+
+
+
+
+
+@app.post("/shift_assignment/respond")
+def respond_shift_assignment(
+    data: schemas.ShiftResponseUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    assignment = db.query(models.ShiftAssignment).filter(models.ShiftAssignment.id == data.assignment_id, models.ShiftAssignment.user_id == current_user.id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    assignment.response = data.response
+    db.commit()
+    db.refresh(assignment)
+    return {
+        "msg": f"Shift assignment {assignment.id} marked as {assignment.response}"
+    }
+
+
+
+
+@app.post("/create_shifts", status_code=201)
+def create_shift(shift_in: schemas.ShiftCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    # Validate shift date is not in the past
+    if shift_in.date < date.today():
+        raise HTTPException(status_code=400, detail="Shift date must be today or in the future")
+
+    # Optional: Validate that start_time is before end_time
+    if shift_in.start_time >= shift_in.end_time:
+        raise HTTPException(status_code=400, detail="Shift start time must be before end time")
+
+    # Create Shift instance
+    shift = models.Shift(
+        place_name=shift_in.place_name,
+        postcode=shift_in.postcode,
+        latitude=shift_in.latitude,
+        longitude=shift_in.longitude,
+        date=shift_in.date,
+        start_time=shift_in.start_time,
+        end_time=shift_in.end_time,
+        created_by=current_user.id  # assuming you have auth
+    )
+
+    # Optional: if you want to store geography point from lat/lon
+    # if shift_in.latitude and shift_in.longitude:
+    #     # create a POINT type for PostGIS
+    #     point_wkt = f"POINT({shift_in.longitude} {shift_in.latitude})"
+    #     shift.location = point_wkt
+
+    db.add(shift)
+    db.commit()
+    db.refresh(shift)
+
+    return {"msg": "Shift created successfully", "shift_id": shift.id}
+
+
+
+
+
+
+@app.get("/fetch_shifts", response_model=list[schemas.ShiftCreate])
+def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    assignments = (
+        db.query(models.ShiftAssignment)
+        .filter(models.ShiftAssignment.user_id == current_user.id)
+        .all()
+    )
+    
+    if not assignments:
+        raise HTTPException(status_code=404, detail="No shifts found for user")
+
+    # Extract all shift details from assignments
+    shifts = [assignment.shift for assignment in assignments]
+
+    return shifts
+
+
+
+
+
+@app.put("/update_shift")
+def shift_update(
+    data: schemas.UpdateShift,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    shift = db.query(models.Shift).filter(models.Shift.id == data.shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    
+
+    shift.date = data.date
+    shift.start_time = data.start_time
+    shift.end_time = data.end_time
+    db.commit()
+    db.refresh(shift)
+
+    return {
+        "msg": f"Shift {shift.id} updated successfully"
+    }

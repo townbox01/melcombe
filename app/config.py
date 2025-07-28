@@ -6,9 +6,15 @@ import os
 
 
 
+
+
 class Settings(BaseSettings):
     DATABASE_URL: str
     GOOGLE_API_KEY: str
+    POSTGRES_DB: str
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
+    CELERY_BROKER_URL: str
     CLOCKIN_RADIUS_METERS: float = 100
 
     class Config:

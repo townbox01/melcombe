@@ -1,16 +1,14 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Time, Date, Boolean
 from sqlalchemy.orm import relationship
-from geoalchemy2 import Geography
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
-
+from sqlalchemy import Enum
+import enum
 
 
 
 Base = declarative_base()
-
-
 
 
 
@@ -55,11 +53,13 @@ class Shift(Base):
     postcode = Column(String, nullable=False)
     latitude = Column(String, nullable=True)
     longitude = Column(String, nullable=True)
-    location = Column(Geography("POINT"), nullable=True)
+    #location = Column(Geography("POINT"), nullable=True)
     date = Column(Date, nullable=False)
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     assignments = relationship("ShiftAssignment", back_populates="shift", cascade="all, delete-orphan")
+
 
 
 
@@ -70,8 +70,12 @@ class ShiftAssignment(Base):
     shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="CASCADE"))
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     assigned_at = Column(DateTime, default=datetime.utcnow)
+    assigned_by = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     shift = relationship("Shift", back_populates="assignments")
-    user = relationship("User", backref="assignments")
+    response = Column(String, nullable=True)
+    status = Column(String, nullable=True)
+    user = relationship("User", foreign_keys=[user_id], backref="assignments")
+    assigned_by_user = relationship("User", foreign_keys=[assigned_by])
 
 
 
@@ -80,7 +84,7 @@ class ShiftAssignment(Base):
 class Attendance(Base):
     __tablename__ = "attendances"
     id = Column(Integer, primary_key=True)
-    shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="CASCADE"))
+    assign_id = Column(Integer, ForeignKey("shift_assignments.id", ondelete="CASCADE"))
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     clock_in_time = Column(DateTime, nullable=True)
     clock_in_lat = Column(Float, nullable=True)
@@ -90,3 +94,8 @@ class Attendance(Base):
     clock_out_lon = Column(Float, nullable=True)
 
     status = Column(String, default="pending")  # pending, completed, missed, etc.
+
+
+
+
+

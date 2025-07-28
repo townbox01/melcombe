@@ -9,7 +9,7 @@ from alembic import context
 import sys
 import os
 # Add the parent directory of "app" to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.models import Base  # Adjust the path to your actual Base definition
 
@@ -56,6 +56,7 @@ def run_migrations_offline() -> None:
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
+        include_object=include_object,
         dialect_opts={"paramstyle": "named"},
     )
 
@@ -64,7 +65,10 @@ def run_migrations_offline() -> None:
 
 
 
-
+def include_object(object, name, type_, reflected, compare_to):
+    if type_ == "table" and name == "spatial_ref_sys":
+        return False
+    return True
 
 
 
@@ -83,7 +87,8 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata,  include_object=include_object,
+            
         )
 
         with context.begin_transaction():
