@@ -378,7 +378,7 @@ def get_users_not_assigned_to_shift(request:Request, data: schemas.UserTOAssign,
     return [
         schemas.UserTOAssignResponse(
             id=u.id,
-            profile_pic= str(request.base_url) + u.profile_pic,
+            profile_pic=u.profile_pic,
             name=f"{u.first_name or ''} {u.last_name or ''}".strip()
         )
         for u in users
