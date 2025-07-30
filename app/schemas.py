@@ -38,6 +38,19 @@ class UserCreate(BaseModel):
     email: EmailStr
 
 
+class UserTOAssign(BaseModel):
+    shift_id: int
+
+
+class UserTOAssignResponse(BaseModel):
+    id: int
+    profile_pic: str | None = None
+    name: str
+
+    class Config:
+        orm_mode = True
+
+
 
 class ShiftResponseUpdate(BaseModel):
     assignment_id: int
@@ -58,6 +71,7 @@ class UserUpdate(BaseModel):
     badge: Optional[str] = None
     badge_exp: Optional[date] = None
     badge_pic: Optional[str] = None
+    profile_pic: Optional[str] = None
     dob: Optional[date] = None
     acc_num: Optional[str] = None
     right_to_wrk: Optional[str] = None
@@ -115,3 +129,18 @@ class UpdateShift(BaseModel):
     date: date
     start_time: time
     end_time: time
+
+
+
+
+
+class AllShifts(BaseModel):
+    id: int
+    company: Optional[str] = None 
+    place_name: str
+    postcode: str
+    start_time: time
+    end_time: time
+
+    class Config:
+        orm_mode = True

@@ -24,14 +24,19 @@ from mail_utils import register_email
 import utils
 from admin import setup_admin
 import asyncio
+from fastapi.staticfiles import StaticFiles
 from uuid import uuid4
 from security import verify_password
 from auth import create_access_token, get_current_user,create_refresh_token, REFRESH_SECRET_KEY, ALGORITHM
-
-
+from sqlalchemy import select
+from fastapi import Request
 #models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Security Company Shift & Clock-in API")
+
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 
 setup_admin(app)
 
@@ -190,6 +195,7 @@ async def clock_in(data: schemas.ClockInData, db: Session = Depends(get_db), cur
 async def upload_files(
     user_id: int,
     badge_pic: UploadFile = File(...),
+    profile_pic: UploadFile = File(...),
     first_name: Optional[str] = Form(None),
     last_name: Optional[str] = Form(None),
     acct_num: Optional[str] = Form(None),
@@ -217,6 +223,19 @@ async def upload_files(
 
         print(image_path)
 
+    if profile_pic:
+        
+        image_path = os.path.join(UPLOAD_DIR, f"{uuid4()}{profile_pic.filename}")
+    
+
+        with open(image_path, "wb") as buffer:
+            shutil.copyfileobj(profile_pic.file, buffer)
+
+        user.profile_pic = image_path
+
+        print(image_path)
+        
+
         # Update fields
     if first_name is not None:
         user.first_name = first_name
@@ -235,14 +254,12 @@ async def upload_files(
 
 
 @app.post("/create-user")
-async def admin_create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+async def admin_create_user(user: schemas.UserCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     existing = db.query(models.User).filter(models.User.email == user.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     password = generate_random_password()
-    print(password)
     hashed_password = bcrypt.hash(password)
-    print(hashed_password)
     count = db.query(models.User).count()
     staff_id = f"GUARD-{count+1:04d}"
     new_user = models.User(
@@ -265,12 +282,7 @@ async def admin_create_user(user: schemas.UserCreate, db: Session = Depends(get_
 
 
 
-from fastapi import UploadFile, File, HTTPException, Depends
-from sqlalchemy.orm import Session
-import os
-import shutil
-from uuid import uuid4
-from typing import Optional
+
 
 # Constants (define these somewhere in your config)
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/gif"}
@@ -325,7 +337,7 @@ def login_user(data: schemas.LoginInput, db: Session = Depends(get_db)):
 
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer", "user_id":user.id}
 
 
 
@@ -342,6 +354,37 @@ def refresh_token(payload: schemas.RefreshInput):
     except JWTError:
         raise HTTPException(status_code=403, detail="Invalid or expired refresh token")
     
+
+
+
+
+
+
+
+@app.get('/users_not_assigned', response_model=list[schemas.UserTOAssignResponse])
+def get_users_not_assigned_to_shift(request:Request, data: schemas.UserTOAssign, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # Subquery: all user_ids already assigned to the shift
+    subquery = (
+        select(models.ShiftAssignment.user_id)
+        .where(models.ShiftAssignment.shift_id == data.shift_id)
+        .subquery()
+    )
+
+
+    # Main query: users whose IDs are NOT in the above subquery
+    users = db.query(models.User).filter(models.User.id.notin_(subquery)).all()
+
+        # Convert to list of UserSummary
+    return [
+        schemas.UserTOAssignResponse(
+            id=u.id,
+            profile_pic= str(request.base_url) + u.profile_pic,
+            name=f"{u.first_name or ''} {u.last_name or ''}".strip()
+        )
+        for u in users
+    ]
+    
+
 
 
 
@@ -442,12 +485,6 @@ def create_shift(shift_in: schemas.ShiftCreate, db: Session = Depends(get_db), c
         created_by=current_user.id  # assuming you have auth
     )
 
-    # Optional: if you want to store geography point from lat/lon
-    # if shift_in.latitude and shift_in.longitude:
-    #     # create a POINT type for PostGIS
-    #     point_wkt = f"POINT({shift_in.longitude} {shift_in.latitude})"
-    #     shift.location = point_wkt
-
     db.add(shift)
     db.commit()
     db.refresh(shift)
@@ -458,8 +495,8 @@ def create_shift(shift_in: schemas.ShiftCreate, db: Session = Depends(get_db), c
 
 
 
-
-@app.get("/fetch_shifts", response_model=list[schemas.ShiftCreate])
+#all shifts assigned to a user
+@app.get("/fetch_my_shifts", response_model=list[schemas.ShiftCreate])
 def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     assignments = (
         db.query(models.ShiftAssignment)
@@ -476,6 +513,18 @@ def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_cu
     return shifts
 
 
+#all shifts 
+@app.get("/fetch_all_shifts", response_model=list[schemas.AllShifts])
+def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    shifts = db.query(models.Shift).all()
+    
+    if not shifts:
+        raise HTTPException(status_code=404, detail="No shift")
+
+    # Extract all shift details from assignments
+    #shifts = [assignment.shift for assignment in assignments]
+
+    return shifts
 
 
 
