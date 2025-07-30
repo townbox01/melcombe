@@ -468,6 +468,9 @@ def create_shift(shift_in: schemas.ShiftCreate, db: Session = Depends(get_db), c
     # Validate shift date is not in the past
     if shift_in.date < date.today():
         raise HTTPException(status_code=400, detail="Shift date must be today or in the future")
+    
+    
+
 
     # Optional: Validate that start_time is before end_time
     if shift_in.start_time >= shift_in.end_time:
@@ -476,6 +479,7 @@ def create_shift(shift_in: schemas.ShiftCreate, db: Session = Depends(get_db), c
     # Create Shift instance
     shift = models.Shift(
         place_name=shift_in.place_name,
+        company = shift_in.company,
         postcode=shift_in.postcode,
         latitude=shift_in.latitude,
         longitude=shift_in.longitude,

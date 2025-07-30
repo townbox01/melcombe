@@ -104,6 +104,7 @@ class RefreshInput(BaseModel):
 
 class ShiftCreate(BaseModel):
     place_name: Optional[str]
+    company: Optional[str]
     postcode: Optional[str]
     latitude: Optional[str]
     longitude: Optional[str]
