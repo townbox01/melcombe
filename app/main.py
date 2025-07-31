@@ -53,8 +53,6 @@ def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-
-
 # Allowed extensions and MIME types
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".pdf"}
 ALLOWED_MIME_TYPES = {
@@ -71,9 +69,6 @@ async def assign_shift(data: schemas.ShiftAssign, db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail="Could not resolve postcode location")
     shift = crud.assign_shift(db, data.guard_id, data.post_name, data.postcode, lat, lon)
     return shift
-
-
-
 
 
 @app.post("/shifts/clock-out")
@@ -137,8 +132,6 @@ async def clock_out(
 
 
 
-
-
 #clock in her
 
 @app.post("/shifts/clock-in")
@@ -184,9 +177,6 @@ async def clock_in(data: schemas.ClockInData, db: Session = Depends(get_db), cur
         return {"Message": "Guard Clock in Successful"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-
 
 
 
@@ -281,9 +271,6 @@ async def admin_create_user(user: schemas.UserCreate, db: Session = Depends(get_
 
 
 
-
-
-
 # Constants (define these somewhere in your config)
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/gif"}
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif"}
@@ -323,8 +310,6 @@ def save_uploaded_file(upload_file: UploadFile, folder: str = UPLOAD_DIR) -> str
 
 
 
-
-
 @app.post("/login")
 def login_user(data: schemas.LoginInput, db: Session = Depends(get_db)):
     user = db.query(models.User).filter((models.User.email == data.identifier) | (models.User.staff_id == data.identifier)).first()
@@ -337,7 +322,8 @@ def login_user(data: schemas.LoginInput, db: Session = Depends(get_db)):
 
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer", "user_id":user.id}
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer", "user_id":user.id, "role":user.role}
+
 
 
 
@@ -357,10 +343,6 @@ def refresh_token(payload: schemas.RefreshInput):
 
 
 
-
-
-
-
 @app.get('/users_not_assigned', response_model=list[schemas.UserTOAssignResponse])
 def get_users_not_assigned_to_shift(request:Request, data: schemas.UserTOAssign, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     # Subquery: all user_ids already assigned to the shift
@@ -369,7 +351,6 @@ def get_users_not_assigned_to_shift(request:Request, data: schemas.UserTOAssign,
         .where(models.ShiftAssignment.shift_id == data.shift_id)
         .subquery()
     )
-
 
     # Main query: users whose IDs are NOT in the above subquery
     users = db.query(models.User).filter(models.User.id.notin_(subquery)).all()
@@ -384,9 +365,6 @@ def get_users_not_assigned_to_shift(request:Request, data: schemas.UserTOAssign,
         for u in users
     ]
     
-
-
-
 
 
 @app.post("/assign_shift")
@@ -442,8 +420,6 @@ def assign_shift(data: schemas.ShiftAssignRequest, db: Session = Depends(get_db)
 
 
 
-
-
 @app.post("/shift_assignment/respond")
 def respond_shift_assignment(
     data: schemas.ShiftResponseUpdate,
@@ -453,7 +429,15 @@ def respond_shift_assignment(
     assignment = db.query(models.ShiftAssignment).filter(models.ShiftAssignment.id == data.assignment_id, models.ShiftAssignment.user_id == current_user.id).first()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
-    assignment.response = data.response
+    
+    if data.response == "accepted":
+        assignment.response = data.response
+        assignment.status = "to do"
+
+    if data.response == "rejected":
+        assignment.response = data.response
+        assignment.status = "closed"
+
     db.commit()
     db.refresh(assignment)
     return {
@@ -497,8 +481,6 @@ def create_shift(shift_in: schemas.ShiftCreate, db: Session = Depends(get_db), c
 
 
 
-
-
 #all shifts assigned to a user
 @app.get("/fetch_my_shifts", response_model=list[schemas.ShiftCreate])
 def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
@@ -507,13 +489,10 @@ def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_cu
         .filter(models.ShiftAssignment.user_id == current_user.id)
         .all()
     )
-    
     if not assignments:
         raise HTTPException(status_code=404, detail="No shifts found for user")
-
     # Extract all shift details from assignments
     shifts = [assignment.shift for assignment in assignments]
-
     return shifts
 
 
@@ -527,7 +506,6 @@ def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_cu
 
     # Extract all shift details from assignments
     #shifts = [assignment.shift for assignment in assignments]
-
     return shifts
 
 
@@ -552,3 +530,46 @@ def shift_update(
     return {
         "msg": f"Shift {shift.id} updated successfully"
     }
+
+
+
+#all assigned shifts
+
+@app.get('/all_assigned_shifts')
+def get_accepted_assigned_shifts(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    result = db.query(
+        models.ShiftAssignment.id,
+        models.ShiftAssignment.shift_id,
+        models.ShiftAssignment.response,
+        models.ShiftAssignment.status,
+        models.Shift.place_name,
+        models.Shift.postcode,
+        models.Shift.date,
+        models.Shift.start_time,
+        models.Shift.end_time,
+        models.User.first_name,
+        models.User.last_name,
+        models.User.profile_pic
+    ).join(models.Shift, models.ShiftAssignment.shift_id == models.Shift.id
+    ).join(models.User, models.ShiftAssignment.user_id == models.User.id
+    ).filter(models.ShiftAssignment.response == "accepted"
+    ).all()
+
+    return [
+        {
+            "id": r.id,
+            "shift_id": r.shift_id,
+            "response": r.response,
+            "status": r.status,
+            "place_name": r.place_name,
+            "postcode": r.postcode,
+            "date": r.date.isoformat(),
+            "start_time": r.start_time.strftime("%H:%M"),
+            "end_time": r.end_time.strftime("%H:%M"),
+            "first_name": r.first_name,
+            "last_name": r.last_name,
+            "profile_pic": r.profile_pic,
+        }
+        for r in result
+    ]
+
