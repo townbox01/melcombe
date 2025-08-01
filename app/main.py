@@ -132,10 +132,11 @@ async def clock_out(
 
 
 
-#clock in her
+#clock in here
 
 @app.post("/shifts/clock-in")
 async def clock_in(data: schemas.ClockInData, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    print("Payload types:", type(data.guard_lat), type(data.guard_lon))
     shift_assigned = db.query(models.ShiftAssignment).filter(models.ShiftAssignment.id == data.assign_id, models.ShiftAssignment.user_id == current_user.id).first()
     
 
@@ -419,7 +420,6 @@ def assign_shift(data: schemas.ShiftAssignRequest, db: Session = Depends(get_db)
 
 
 
-
 @app.post("/shift_assignment/respond")
 def respond_shift_assignment(
     data: schemas.ShiftResponseUpdate,
@@ -453,8 +453,6 @@ def create_shift(shift_in: schemas.ShiftCreate, db: Session = Depends(get_db), c
     if shift_in.date < date.today():
         raise HTTPException(status_code=400, detail="Shift date must be today or in the future")
     
-    
-
 
     # Optional: Validate that start_time is before end_time
     if shift_in.start_time >= shift_in.end_time:
@@ -481,8 +479,52 @@ def create_shift(shift_in: schemas.ShiftCreate, db: Session = Depends(get_db), c
 
 
 
-#all shifts assigned to a user
-@app.get("/fetch_my_shifts", response_model=list[schemas.ShiftCreate])
+# #all shifts assigned to a user
+# @app.get("/fetch_my_shifts", response_model=list[schemas.ShiftCreate])
+# def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+#     assignments = (
+#         db.query(models.ShiftAssignment)
+#         .filter(models.ShiftAssignment.user_id == current_user.id)
+#         .all()
+#     )
+#     if not assignments:
+#         raise HTTPException(status_code=404, detail="No shifts found for user")
+#     # Extract all shift details from assignments
+#     shifts = [assignment.shift for assignment in assignments]
+#     return shifts
+
+
+# @app.get("/fetch_my_shifts", response_model=list[schemas.ShiftAssignedResponse])
+# def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+#     assignments = (
+#         db.query(models.ShiftAssignment)
+#         .filter(models.ShiftAssignment.user_id == current_user.id)
+#         .all()
+#     )
+#     if not assignments:
+#         raise HTTPException(status_code=404, detail="No shifts found for user")
+
+#     shift_data = []
+#     for a in assignments:
+#         shift = a.shift
+#         shift_data.append({
+#             "id": shift.id,
+#             "place_name": shift.place_name,
+#             "company": shift.company,
+#             "postcode": shift.postcode,
+#             "latitude": shift.latitude,
+#             "longitude": shift.longitude,
+#             "date": shift.date,
+#             "start_time": shift.start_time,
+#             "end_time": shift.end_time,
+#             "response": a.response,
+#             "status": a.status,
+#         })
+
+#     return shift_data
+
+
+@app.get("/fetch_my_shifts", response_model=list[schemas.ShiftAssignedResponse])
 def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     assignments = (
         db.query(models.ShiftAssignment)
@@ -491,9 +533,42 @@ def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_cu
     )
     if not assignments:
         raise HTTPException(status_code=404, detail="No shifts found for user")
-    # Extract all shift details from assignments
-    shifts = [assignment.shift for assignment in assignments]
-    return shifts
+
+    shift_data = []
+
+    for assignment in assignments:
+        shift = assignment.shift
+
+        # Check if attendance exists for this assignment
+        attendance = (
+            db.query(models.Attendance)
+            .filter_by(assign_id=assignment.id, user_id=current_user.id)
+            .first()
+        )
+
+        shift_data.append({
+            "id": shift.id,
+            "assign_id":assignment.id,
+            "place_name": shift.place_name,
+            "company": shift.company,
+            "postcode": shift.postcode,
+            "latitude": shift.latitude,
+            "longitude": shift.longitude,
+            "date": shift.date,
+            "start_time": shift.start_time,
+            "end_time": shift.end_time,
+            "response": assignment.response,
+            "status": assignment.status,
+
+            # Attendance fields
+            "clock_in_time": attendance.clock_in_time if attendance else None,
+            "clock_out_time": attendance.clock_out_time if attendance else None,
+            "attendance_status": attendance.status if attendance else None,
+        })
+
+    return shift_data
+
+
 
 
 #all shifts 
@@ -572,4 +647,5 @@ def get_accepted_assigned_shifts(db: Session = Depends(get_db), current_user: mo
         }
         for r in result
     ]
+
 
