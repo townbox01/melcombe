@@ -29,7 +29,6 @@ class ClockInData(BaseModel):
     user_id: int
     # guard_lat: condecimal(ge=-90, le=90)
     # guard_lon: condecimal(ge=-180, le=180)
-
     # guard_lat: confloat(ge=-90, le=90)
     # guard_lon: confloat(ge=-180, le=180)
 

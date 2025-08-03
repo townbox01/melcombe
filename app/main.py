@@ -323,7 +323,17 @@ def login_user(data: schemas.LoginInput, db: Session = Depends(get_db)):
 
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer", "user_id":user.id, "role":user.role}
+    return {
+        "access_token": access_token, 
+        "refresh_token": refresh_token, 
+        "token_type": "bearer", 
+        "user_id":user.id, 
+        "role":user.role,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "pic":user.profile_pic,
+        "updated_password":user.default_pass_changed
+        }
 
 
 
