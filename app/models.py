@@ -95,6 +95,7 @@ class Attendance(Base):
     clock_out_lon = Column(Float, nullable=True)
 
     status = Column(String, default="pending")  # pending, completed, missed, etc.
+    checked = Column(Boolean, default=False)
 
 
 

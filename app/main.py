@@ -659,3 +659,31 @@ def get_accepted_assigned_shifts(db: Session = Depends(get_db), current_user: mo
     ]
 
 
+
+from schemas import ShiftAssignmentDetail 
+from sqlalchemy.orm import Session, joinedload
+
+
+@app.get("/all-attendance", response_model=List[schemas.ShiftAssignmentDetail])
+def get_all_user_attendance(db: Session = Depends(get_db)):
+    assignments = db.query(models.ShiftAssignment).options(
+        joinedload(models.ShiftAssignment.user),
+        joinedload(models.ShiftAssignment.shift),
+    ).all()
+
+    results = []
+
+    for assignment in assignments:
+        attendance = db.query(models.Attendance).filter(models.Attendance.assign_id == assignment.id).first()
+
+        results.append({
+            "assignment_id": assignment.id,
+            "assigned_at": assignment.assigned_at,
+            "response": assignment.response,
+            "status": assignment.status,
+            "user": assignment.user,
+            "shift": assignment.shift,
+            "attendance": attendance
+        })
+
+    return results

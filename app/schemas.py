@@ -175,3 +175,63 @@ class ShiftAssignedResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+
+
+
+
+
+
+class UserDetail(BaseModel):
+    id: int
+    staff_id: str
+    first_name: Optional[str]
+    last_name: Optional[str]
+    profile_pic: Optional[str]
+
+    class Config:
+        orm_mode = True
+
+
+class ShiftDetail(BaseModel):
+    id: int
+    place_name: str
+    company: Optional[str]
+    postcode: str
+    latitude: Optional[str]
+    longitude: Optional[str]
+    date: date
+    start_time: time
+    end_time: time
+
+    class Config:
+        orm_mode = True
+
+
+class AttendanceDetail(BaseModel):
+    id: int
+    clock_in_time: Optional[datetime]
+    clock_in_lat: Optional[float]
+    clock_in_lon: Optional[float]
+    clock_out_time: Optional[datetime]
+    clock_out_lat: Optional[float]
+    clock_out_lon: Optional[float]
+    status: str
+    checked: Optional[bool] = None
+
+    class Config:
+        orm_mode = True
+
+
+class ShiftAssignmentDetail(BaseModel):
+    assignment_id: int
+    assigned_at: datetime
+    response: Optional[str]
+    status: Optional[str]
+    user: UserDetail
+    shift: ShiftDetail
+    attendance: Optional[AttendanceDetail]
+
+    class Config:
+        orm_mode = True
