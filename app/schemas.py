@@ -148,6 +148,8 @@ class AllShifts(BaseModel):
     postcode: str
     start_time: time
     end_time: time
+    date: date
+    
 
     class Config:
         orm_mode = True

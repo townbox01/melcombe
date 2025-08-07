@@ -687,3 +687,63 @@ def get_all_user_attendance(db: Session = Depends(get_db)):
         })
 
     return results
+
+
+
+
+
+
+@app.get("/all-attendance", response_model=List[schemas.ShiftAssignmentDetail])
+def get_all_user_attendance(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    assignments = db.query(models.ShiftAssignment).options(
+        joinedload(models.ShiftAssignment.user),
+        joinedload(models.ShiftAssignment.shift),
+    ).all()
+
+    results = []
+
+    for assignment in assignments:
+        attendance = db.query(models.Attendance).filter(models.Attendance.assign_id == assignment.id).first()
+
+        results.append({
+            "assignment_id": assignment.id,
+            "assigned_at": assignment.assigned_at,
+            "response": assignment.response,
+            "status": assignment.status,
+            "user": assignment.user,
+            "shift": assignment.shift,
+            "attendance": attendance
+        })
+
+    return results
+
+
+
+@app.get("/my-attendance", response_model=List[schemas.ShiftAssignmentDetail])
+def get_my_attendance(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    assignments = db.query(models.ShiftAssignment).options(
+        joinedload(models.ShiftAssignment.user),
+        joinedload(models.ShiftAssignment.shift),
+    ).filter(models.ShiftAssignment.user_id == current_user.id).all()
+
+    results = []
+
+    for assignment in assignments:
+        attendance = db.query(models.Attendance).filter(
+            models.Attendance.assign_id == assignment.id
+        ).first()
+
+        results.append({
+            "assignment_id": assignment.id,
+            "assigned_at": assignment.assigned_at,
+            "response": assignment.response,
+            "status": assignment.status,
+            "user": assignment.user,
+            "shift": assignment.shift,
+            "attendance": attendance,
+        })
+
+    return results
