@@ -38,6 +38,8 @@ app = FastAPI(title="Security Company Shift & Clock-in API")
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
+
+
 setup_admin(app)
 
 REQUEST_COUNT = Counter('request_count', 'Total HTTP requests')
@@ -62,13 +64,23 @@ ALLOWED_MIME_TYPES = {
     "application/pdf"
 }
 
-@app.post("/shifts/", response_model=schemas.ShiftOut)
-async def assign_shift(data: schemas.ShiftAssign, db: Session = Depends(get_db)):
-    lat, lon = await utils.get_lat_lon(data.postcode)
-    if lat is None or lon is None:
-        raise HTTPException(status_code=400, detail="Could not resolve postcode location")
-    shift = crud.assign_shift(db, data.guard_id, data.post_name, data.postcode, lat, lon)
-    return shift
+
+
+
+
+# Constants (define these somewhere in your config)
+ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/gif"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif"}
+UPLOAD_DIR = "uploads"  # Make sure this directory exists
+
+
+# @app.post("/shifts/", response_model=schemas.ShiftOut)
+# async def assign_shift(data: schemas.ShiftAssign, db: Session = Depends(get_db)):
+#     lat, lon = await utils.get_lat_lon(data.postcode)
+#     if lat is None or lon is None:
+#         raise HTTPException(status_code=400, detail="Could not resolve postcode location")
+#     shift = crud.assign_shift(db, data.guard_id, data.post_name, data.postcode, lat, lon)
+#     return shift
 
 
 @app.post("/shifts/clock-out")
@@ -269,13 +281,6 @@ async def admin_create_user(user: schemas.UserCreate, db: Session = Depends(get_
     # return raw password to be sent via email or SMS
     return {"msg": "User created", "temporary_password": password}
 
-
-
-
-# Constants (define these somewhere in your config)
-ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/gif"}
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif"}
-UPLOAD_DIR = "uploads"  # Make sure this directory exists
 
 
 def validate_upload_file(upload_file: UploadFile):
@@ -489,49 +494,6 @@ def create_shift(shift_in: schemas.ShiftCreate, db: Session = Depends(get_db), c
 
 
 
-# #all shifts assigned to a user
-# @app.get("/fetch_my_shifts", response_model=list[schemas.ShiftCreate])
-# def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-#     assignments = (
-#         db.query(models.ShiftAssignment)
-#         .filter(models.ShiftAssignment.user_id == current_user.id)
-#         .all()
-#     )
-#     if not assignments:
-#         raise HTTPException(status_code=404, detail="No shifts found for user")
-#     # Extract all shift details from assignments
-#     shifts = [assignment.shift for assignment in assignments]
-#     return shifts
-
-
-# @app.get("/fetch_my_shifts", response_model=list[schemas.ShiftAssignedResponse])
-# def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-#     assignments = (
-#         db.query(models.ShiftAssignment)
-#         .filter(models.ShiftAssignment.user_id == current_user.id)
-#         .all()
-#     )
-#     if not assignments:
-#         raise HTTPException(status_code=404, detail="No shifts found for user")
-
-#     shift_data = []
-#     for a in assignments:
-#         shift = a.shift
-#         shift_data.append({
-#             "id": shift.id,
-#             "place_name": shift.place_name,
-#             "company": shift.company,
-#             "postcode": shift.postcode,
-#             "latitude": shift.latitude,
-#             "longitude": shift.longitude,
-#             "date": shift.date,
-#             "start_time": shift.start_time,
-#             "end_time": shift.end_time,
-#             "response": a.response,
-#             "status": a.status,
-#         })
-
-#     return shift_data
 
 
 @app.get("/fetch_my_shifts", response_model=list[schemas.ShiftAssignedResponse])
@@ -586,11 +548,10 @@ def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_cu
 def fetch_user_shifts(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     shifts = db.query(models.Shift).all()
     
-    if not shifts:
-        raise HTTPException(status_code=404, detail="No shift")
+    # if not shifts:
+    #     raise HTTPException(status_code=404, detail="No shift")
 
     # Extract all shift details from assignments
-    #shifts = [assignment.shift for assignment in assignments]
     return shifts
 
 
@@ -693,17 +654,97 @@ def get_all_user_attendance(db: Session = Depends(get_db)):
 
 
 
-@app.get("/all-attendance", response_model=List[schemas.ShiftAssignmentDetail])
-def get_all_user_attendance(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    assignments = db.query(models.ShiftAssignment).options(
-        joinedload(models.ShiftAssignment.user),
-        joinedload(models.ShiftAssignment.shift),
-    ).all()
+# @app.get("/all-attendance", response_model=List[schemas.ShiftAssignmentDetail])
+# def get_all_user_attendance(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+#     assignments = db.query(models.ShiftAssignment).options(
+#         joinedload(models.ShiftAssignment.user),
+#         joinedload(models.ShiftAssignment.shift),
+#     ).all()
+
+#     results = []
+
+#     for assignment in assignments:
+#         attendance = db.query(models.Attendance).filter(models.Attendance.assign_id == assignment.id).first()
+
+#         results.append({
+#             "assignment_id": assignment.id,
+#             "assigned_at": assignment.assigned_at,
+#             "response": assignment.response,
+#             "status": assignment.status,
+#             "user": assignment.user,
+#             "shift": assignment.shift,
+#             "attendance": attendance
+#         })
+
+#     return results
+
+
+
+from fastapi import Query
+
+
+# @app.get("/all-attendance", response_model=List[schemas.ShiftAssignmentDetail])
+# def get_all_user_attendance(
+#     shift_date: date = Query(None, description="Optional filter by shift date in YYYY-MM-DD format"),
+#     db: Session = Depends(get_db),
+#     current_user: models.User = Depends(get_current_user)
+# ):
+#     query = db.query(models.ShiftAssignment).options(
+#         joinedload(models.ShiftAssignment.user),
+#         joinedload(models.ShiftAssignment.shift),
+#     )
+
+#     if shift_date:
+#         query = query.join(models.Shift).filter(models.Shift.date == shift_date)
+
+#     assignments = query.all()
+
+#     results = []
+#     for assignment in assignments:
+#         attendance = (
+#             db.query(models.Attendance)
+#             .filter(models.Attendance.assign_id == assignment.id)
+#             .first()
+#         )
+
+#         results.append({
+#             "assignment_id": assignment.id,
+#             "assigned_at": assignment.assigned_at,
+#             "response": assignment.response,
+#             "status": assignment.status,
+#             "user": assignment.user,
+#             "shift": assignment.shift,
+#             "attendance": attendance
+#         })
+
+#     return results
+
+
+#all attendance by date for admin
+from fastapi import Query
+
+@app.get("/attendance-by-date", response_model=List[schemas.ShiftAssignmentDetail])
+def get_attendance_by_date(
+    shift_date: date = Query(..., description="Filter by shift date (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    assignments = (
+        db.query(models.ShiftAssignment)
+        .join(models.Shift)  # ensure we can filter by shift date
+        .options(
+            joinedload(models.ShiftAssignment.user),
+            joinedload(models.ShiftAssignment.shift)
+        )
+        .filter(models.Shift.date == shift_date)
+        .all()
+    )
 
     results = []
-
     for assignment in assignments:
-        attendance = db.query(models.Attendance).filter(models.Attendance.assign_id == assignment.id).first()
+        attendance = db.query(models.Attendance).filter(
+            models.Attendance.assign_id == assignment.id
+        ).first()
 
         results.append({
             "assignment_id": assignment.id,
@@ -716,6 +757,9 @@ def get_all_user_attendance(db: Session = Depends(get_db), current_user: models.
         })
 
     return results
+
+
+
 
 
 
@@ -747,3 +791,108 @@ def get_my_attendance(
         })
 
     return results
+
+
+
+
+#all assigned shifts by date
+
+from fastapi import Query
+from datetime import date
+
+@app.get('/all_assigned_by_date')
+def get_accepted_assigned_shifts(
+    shift_date: date = Query(..., description="Filter by shift date in YYYY-MM-DD format"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    result = db.query(
+        models.ShiftAssignment.id,
+        models.ShiftAssignment.shift_id,
+        models.ShiftAssignment.response,
+        models.ShiftAssignment.status,
+        models.Shift.place_name,
+        models.Shift.postcode,
+        models.Shift.date,
+        models.Shift.start_time,
+        models.Shift.end_time,
+        models.User.first_name,
+        models.User.last_name,
+        models.User.profile_pic
+    ).join(
+        models.Shift, models.ShiftAssignment.shift_id == models.Shift.id
+    ).join(
+        models.User, models.ShiftAssignment.user_id == models.User.id
+    ).filter(
+        models.ShiftAssignment.response == "accepted",
+        models.Shift.date == shift_date
+    ).all()
+
+    return [
+        {
+            "id": r.id,
+            "shift_id": r.shift_id,
+            "response": r.response,
+            "status": r.status,
+            "place_name": r.place_name,
+            "postcode": r.postcode,
+            "date": r.date.isoformat(),
+            "start_time": r.start_time.strftime("%H:%M"),
+            "end_time": r.end_time.strftime("%H:%M"),
+            "first_name": r.first_name,
+            "last_name": r.last_name,
+            "profile_pic": r.profile_pic,
+        }
+        for r in result
+    ]
+
+
+#staff assigned shifts by date
+
+@app.get("/my_shifts_by_date", response_model=list[schemas.ShiftAssignedResponse])
+def fetch_user_shifts(
+    shift_date: date = Query(None, description="Optional filter by shift date in YYYY-MM-DD format"),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    query = db.query(models.ShiftAssignment).join(models.Shift).filter(
+        models.ShiftAssignment.user_id == current_user.id
+    )
+
+    if shift_date:
+        query = query.filter(models.Shift.date == shift_date)
+
+    assignments = query.all()
+
+    if not assignments:
+        raise HTTPException(status_code=404, detail="No shifts found for user")
+
+    shift_data = []
+    for assignment in assignments:
+        shift = assignment.shift
+
+        attendance = (
+            db.query(models.Attendance)
+            .filter_by(assign_id=assignment.id, user_id=current_user.id)
+            .first()
+        )
+
+        shift_data.append({
+            "id": shift.id,
+            "assign_id": assignment.id,
+            "place_name": shift.place_name,
+            "company": shift.company,
+            "postcode": shift.postcode,
+            "latitude": shift.latitude,
+            "longitude": shift.longitude,
+            "date": shift.date,
+            "start_time": shift.start_time,
+            "end_time": shift.end_time,
+            "response": assignment.response,
+            "status": assignment.status,
+            "clock_in_time": attendance.clock_in_time if attendance else None,
+            "clock_out_time": attendance.clock_out_time if attendance else None,
+            "attendance_status": attendance.status if attendance else None,
+        })
+
+    return shift_data
